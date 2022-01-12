@@ -1,0 +1,106 @@
+version: '3.5'
+
+services:
+  db:
+    image: postgres
+    restart: always
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_PASSWORD: example
+
+  adminer:
+    image: adminer
+    restart: always
+    ports:
+      - 8070:8080
+
+
+  es01:
+    image: docker.elastic.co/elasticsearch/elasticsearch:7.10.2
+    container_name: es01
+    environment:
+      - node.name=es01
+      - cluster.name=es-docker-cluster
+      - cluster.initial_master_nodes=es01
+      #- bootstrap.memory_lock=true
+      #- discovery.type=single-node
+      - xpack.security.enabled=false
+      - "ES_JAVA_OPTS=-Xms512m -Xmx512m"
+    ulimits:
+      memlock:
+        soft: -1
+        hard: -1
+      nofile:
+        soft: 65536
+        hard: 65536
+    volumes:
+      - data01:/Users/ericsson/elasticsearch/data
+    ports:
+      - 9200:9200
+    networks:
+      - elastic
+
+
+  kib01:
+    image: docker.elastic.co/kibana/kibana:7.10.2
+    container_name: kib01
+    ports:
+      - 5601:5601
+    environment:
+      ELASTICSEARCH_HOSTS: http://es01:9200
+    networks:
+      - elastic
+    depends_on:
+      - es01
+
+
+
+  zookeeper:
+    image: "docker.io/bitnami/zookeeper:3"
+    ports:
+      - "2181:2181"
+    volumes:
+      - "zookeeper_data:/bitnami"
+    environment:
+      - ALLOW_ANONYMOUS_LOGIN=yes
+  kafka:
+    image: "docker.io/bitnami/kafka:2-debian-10"
+    ports:
+      - "9092:9092"
+    expose:
+      - "9093"
+    volumes:
+      - "kafka_data:/bitnami"
+    environment:
+      - KAFKA_CFG_ZOOKEEPER_CONNECT=zookeeper:2181
+      - ALLOW_PLAINTEXT_LISTENER=yes
+      - KAFKA_ADVERTISED_LISTENERS=INSIDE://kafka:9093,OUTSIDE://localhost:9092
+      - KAFKA_LISTENER_SECURITY_PROTOCOL_MAP=INSIDE:PLAINTEXT,OUTSIDE:PLAINTEXT
+      - KAFKA_LISTENERS=INSIDE://0.0.0.0:9093,OUTSIDE://0.0.0.0:9092
+      - KAFKA_INTER_BROKER_LISTENER_NAME=INSIDE
+      - KAFKA_ZOOKEEPER_CONNECT=zookeeper:2181
+    depends_on:
+      - zookeeper
+  kafka-ui:
+    image: provectuslabs/kafka-ui
+    container_name: kafka-ui
+    ports:
+      - "9090:8080"
+    restart: always
+    environment:
+      - KAFKA_CLUSTERS_0_NAME=local
+      - KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS=kafka:9093
+      - KAFKA_CLUSTERS_0_ZOOKEEPER=localhost:2181
+
+volumes:
+  zookeeper_data:
+    driver: local
+  kafka_data:
+    driver: local
+  data01:
+    driver: local
+
+networks:
+  elastic:
+    driver: bridge
